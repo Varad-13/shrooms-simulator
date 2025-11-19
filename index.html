@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Hallucination</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Space Mono', monospace;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            gap: 1.5rem;
+            padding: 2rem;
+            box-sizing: border-box;
+            color: white;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+        }
+
+        .interactive-controls {
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            padding: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+        }
+
+        /* Glitch Effect for Title */
+        .glitch {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 4rem;
+            font-weight: 900;
+            position: relative;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            animation: shift 3s infinite;
+        }
+
+        .glitch::before, .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+        }
+
+        .glitch::before {
+            left: 2px;
+            text-shadow: -1px 0 #ff00c1;
+            clip-path: inset(44% 0 61% 0);
+            animation: glitch-anim-1 2s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: -2px;
+            text-shadow: -1px 0 #00fff9;
+            clip-path: inset(50% 0 30% 0);
+            animation: glitch-anim-2 3s infinite linear alternate-reverse;
+        }
+
+        @keyframes shift {
+            0%, 100% { transform: skewX(0deg); }
+            5% { transform: skewX(2deg); }
+            10% { transform: skewX(-2deg); }
+            15% { transform: skewX(0deg); }
+        }
+
+        @keyframes glitch-anim-1 {
+            0% { clip-path: inset(20% 0 80% 0); }
+            20% { clip-path: inset(60% 0 10% 0); }
+            40% { clip-path: inset(40% 0 50% 0); }
+            60% { clip-path: inset(80% 0 5% 0); }
+            80% { clip-path: inset(10% 0 70% 0); }
+            100% { clip-path: inset(30% 0 20% 0); }
+        }
+
+        @keyframes glitch-anim-2 {
+            0% { clip-path: inset(10% 0 60% 0); }
+            20% { clip-path: inset(80% 0 5% 0); }
+            40% { clip-path: inset(30% 0 20% 0); }
+            60% { clip-path: inset(10% 0 80% 0); }
+            80% { clip-path: inset(50% 0 30% 0); }
+            100% { clip-path: inset(70% 0 10% 0); }
+        }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.5);
+            border-radius: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .glitch { font-size: 2rem; }
+            #ui-layer { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas1"></canvas>
+    
+    <div id="ui-layer">
+        <div class="header">
+            <h1 class="glitch" data-text="FLUX VORTEX">FLUX VORTEX</h1>
+            <p class="text-sm opacity-80 tracking-widest">Click & Hold to Warp // Move to Disturb</p>
+        </div>
+
+        <div class="interactive-controls w-full max-w-md self-end">
+            <div class="flex flex-col gap-4">
+                
+                <div class="flex justify-between items-center">
+                    <label class="text-xs uppercase font-bold">Trippiness (Trails)</label>
+                    <span id="trail-val" class="text-xs font-mono">50%</span>
+                </div>
+                <input type="range" id="trail-slider" min="1" max="99" value="15">
+
+                <div class="flex justify-between items-center gap-2">
+                    <button id="btn-mode" class="flex-1 bg-white text-black px-4 py-2 font-bold uppercase text-xs hover:bg-gray-200 transition">
+                        Mode: Flow
+                    </button>
+                    <button id="btn-mirror" class="flex-1 border border-white px-4 py-2 font-bold uppercase text-xs hover:bg-white hover:text-black transition">
+                        Kaleidoscope: Off
+                    </button>
+                </div>
+
+                <div class="flex justify-between text-[10px] opacity-60 font-mono mt-2">
+                    <span>FPS: <span id="fps">60</span></span>
+                    <span>Particles: <span id="p-count">0</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas1');
+        const ctx = canvas.getContext('2d');
+        
+        // UI Elements
+        const trailSlider = document.getElementById('trail-slider');
+        const trailValDisplay = document.getElementById('trail-val');
+        const btnMode = document.getElementById('btn-mode');
+        const btnMirror = document.getElementById('btn-mirror');
+        const fpsDisplay = document.getElementById('fps');
+        const pCountDisplay = document.getElementById('p-count');
+
+        // State
+        let width, height;
+        let particlesArray = [];
+        let hue = 0;
+        let frame = 0;
+        let isWarping = false;
+        
+        // Configuration
+        const config = {
+            trail: 0.15, // Alpha value for clearing canvas (lower = longer trails)
+            mode: 'flow', // flow, vortex, noise
+            mirror: false,
+            particleCount: 1000,
+            baseSpeed: 2,
+            warpSpeed: 15,
+            colorCycleSpeed: 1
+        };
+
+        // Mouse State
+        const mouse = {
+            x: undefined,
+            y: undefined,
+            radius: 200
+        };
+
+        // Resize Handler
+        window.addEventListener('resize', function() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initParticles();
+        });
+
+        // Initial Resize
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+
+        // Interaction Handlers
+        window.addEventListener('mousemove', function(e) {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+
+        window.addEventListener('mousedown', () => isWarping = true);
+        window.addEventListener('mouseup', () => isWarping = false);
+        
+        // Touch support
+        window.addEventListener('touchmove', function(e) {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            isWarping = true; // Auto warp on touch drag
+        });
+        window.addEventListener('touchend', () => {
+            mouse.x = undefined;
+            mouse.y = undefined;
+            isWarping = false;
+        });
+
+        // UI Logic
+        trailSlider.addEventListener('input', (e) => {
+            // Invert logic: slider high = long trails (low alpha)
+            // Slider 1-99. 
+            const val = e.target.value;
+            // If slider is 90, we want alpha 0.05 (super long trails)
+            // If slider is 10, we want alpha 0.5 (short trails)
+            const inverted = 100 - val;
+            config.trail = inverted / 200; // Map to approx 0.02 to 0.5
+            trailValDisplay.innerText = val + '%';
+        });
+
+        btnMode.addEventListener('click', () => {
+            const modes = ['flow', 'vortex', 'chaos'];
+            const currentIdx = modes.indexOf(config.mode);
+            config.mode = modes[(currentIdx + 1) % modes.length];
+            btnMode.innerText = `Mode: ${config.mode}`;
+            initParticles(); // Reset for clean transition
+        });
+
+        btnMirror.addEventListener('click', () => {
+            config.mirror = !config.mirror;
+            btnMirror.innerText = `Kaleidoscope: ${config.mirror ? 'On' : 'Off'}`;
+            if(config.mirror) {
+                btnMirror.classList.add('bg-white', 'text-black');
+            } else {
+                btnMirror.classList.remove('bg-white', 'text-black');
+            }
+        });
+
+        // Vector Math Helper
+        function distance(x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            return Math.sqrt(dx*dx + dy*dy);
+        }
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.angle = Math.random() * 360;
+                this.spin = Math.random() < 0.5 ? 1 : -1;
+                this.color = `hsl(${hue}, 100%, 50%)`;
+                this.life = 0;
+            }
+
+            update() {
+                this.life++;
+                const speedMultiplier = isWarping ? config.warpSpeed : config.baseSpeed;
+
+                // MODE: FLOW (Standard bouncy particles)
+                if (config.mode === 'flow') {
+                    this.x += this.speedX * (isWarping ? 5 : 1);
+                    this.y += this.speedY * (isWarping ? 5 : 1);
+
+                    // Edge bounce
+                    if (this.x > width || this.x < 0) this.speedX = -this.speedX;
+                    if (this.y > height || this.y < 0) this.speedY = -this.speedY;
+
+                    // Mouse interaction (Repulse)
+                    if (mouse.x != undefined) {
+                        let dx = mouse.x - this.x;
+                        let dy = mouse.y - this.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (dist < mouse.radius) {
+                            const forceDirectionX = dx / dist;
+                            const forceDirectionY = dy / dist;
+                            const force = (mouse.radius - dist) / mouse.radius;
+                            const directionX = forceDirectionX * force * this.size;
+                            const directionY = forceDirectionY * force * this.size;
+                            this.x -= directionX * 3;
+                            this.y -= directionY * 3;
+                        }
+                    }
+                } 
+                
+                // MODE: VORTEX (Spiral towards center)
+                else if (config.mode === 'vortex') {
+                    const cx = width / 2;
+                    const cy = height / 2;
+                    
+                    // Move towards center but rotate
+                    const dx = cx - this.x;
+                    const dy = cy - this.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Spiral math
+                    const angle = Math.atan2(dy, dx);
+                    const spiralForce = isWarping ? 15 : 2;
+                    
+                    this.x += Math.cos(angle + 1.5) * spiralForce; // 1.5 radians adds the twist
+                    this.y += Math.sin(angle + 1.5) * spiralForce;
+                    
+                    // Push out if mouse near
+                    if (mouse.x != undefined) {
+                         let mdx = mouse.x - this.x;
+                         let mdy = mouse.y - this.y;
+                         let mdist = Math.sqrt(mdx*mdx + mdy*mdy);
+                         if (mdist < 150) {
+                             this.x -= (mdx/mdist) * 10;
+                             this.y -= (mdy/mdist) * 10;
+                         }
+                    }
+
+                    // Reset if too close to center or out of bounds
+                    if (dist < 10 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                        this.x = Math.random() * width;
+                        this.y = Math.random() * height;
+                        // Spawn more at edges
+                        if(Math.random() > 0.5) {
+                            this.x = Math.random() > 0.5 ? 0 : width;
+                        } else {
+                            this.y = Math.random() > 0.5 ? 0 : height;
+                        }
+                    }
+                }
+
+                // MODE: CHAOS (Jittery noise)
+                else if (config.mode === 'chaos') {
+                    this.x += (Math.random() - 0.5) * (isWarping ? 50 : 10);
+                    this.y += (Math.random() - 0.5) * (isWarping ? 50 : 10);
+                    
+                    // Drift down
+                    this.y += 2;
+
+                    if(this.y > height) {
+                        this.y = 0;
+                        this.x = Math.random() * width;
+                    }
+                }
+
+                // Dynamic Color
+                // Calculate color based on position and global hue
+                const colorOffset = (this.x / width) * 60;
+                this.color = `hsl(${hue + colorOffset}, 70%, 60%)`;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function initParticles() {
+            particlesArray = [];
+            for (let i = 0; i < config.particleCount; i++) {
+                particlesArray.push(new Particle());
+            }
+            pCountDisplay.innerText = config.particleCount;
+        }
+
+        // The core render loop
+        function animate() {
+            // Create trail effect by drawing semi-transparent rect instead of clearRect
+            ctx.fillStyle = `rgba(0, 0, 0, ${config.trail})`;
+            ctx.fillRect(0, 0, width, height);
+
+            // Cycle global hue
+            hue += config.colorCycleSpeed + (isWarping ? 5 : 0);
+
+            const cx = width / 2;
+            const cy = height / 2;
+
+            for (let i = 0; i < particlesArray.length; i++) {
+                const p = particlesArray[i];
+                p.update();
+                
+                // Draw Original
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (config.mirror) {
+                    // Calculate relative pos from center
+                    const rx = p.x - cx;
+                    const ry = p.y - cy;
+                    
+                    // Optimization: Use math instead of context save/restore/rotate
+                    // 90 degrees: (-y, x)
+                    ctx.beginPath();
+                    ctx.arc(cx - ry, cy + rx, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 180 degrees: (-x, -y)
+                    ctx.beginPath();
+                    ctx.arc(cx - rx, cy - ry, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // 270 degrees: (y, -x)
+                    ctx.beginPath();
+                    ctx.arc(cx + ry, cy - rx, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // Visual Distortion Lines (Scanlines)
+            if (frame % 3 === 0) {
+                ctx.fillStyle = `rgba(0,0,0,0.1)`;
+                ctx.fillRect(0, frame % height, width, 2);
+            }
+
+            frame++;
+            requestAnimationFrame(animate);
+        }
+
+        initParticles();
+        animate();
+
+        // FPS Counter (Rough)
+        let lastTime = performance.now();
+        let frames = 0;
+        setInterval(() => {
+            const now = performance.now();
+            const fps = Math.round(frames * 1000 / (now - lastTime));
+            fpsDisplay.innerText = fps;
+            frames = 0;
+            lastTime = now;
+        }, 1000);
+
+        function countFrames() {
+            frames++;
+            requestAnimationFrame(countFrames);
+        }
+        countFrames();
+
+    </script>
+</body>
+</html>
