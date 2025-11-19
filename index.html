@@ -14,6 +14,7 @@
             background-color: #000;
             font-family: 'Space Mono', monospace;
             user-select: none;
+            touch-action: none; /* Prevents scrolling on mobile while interacting */
         }
 
         canvas {
@@ -134,9 +135,17 @@
             border-radius: 2px;
         }
 
+        /* Mobile Responsiveness */
         @media (max-width: 768px) {
             .glitch { font-size: 2rem; }
-            #ui-layer { padding: 1rem; }
+            #ui-layer { padding: 1rem; gap: 1rem; }
+            .interactive-controls { padding: 0.75rem; }
+            
+            /* Make controls smaller on mobile */
+            label { font-size: 0.65rem; }
+            #trail-val { font-size: 0.65rem; }
+            button { font-size: 0.65rem; padding: 0.4rem 0.8rem; }
+            .text-[10px] { font-size: 9px; }
         }
     </style>
 </head>
@@ -150,7 +159,7 @@
             <p class="text-sm opacity-80 tracking-widest">Click & Hold to Warp // Move to Disturb</p>
         </div>
 
-        <div class="interactive-controls w-full max-w-md self-end">
+        <div class="interactive-controls w-full max-w-md self-start">
             <div class="flex flex-col gap-4">
                 
                 <div class="flex justify-between items-center">
@@ -200,7 +209,7 @@
             trail: 0.15, // Alpha value for clearing canvas (lower = longer trails)
             mode: 'flow', // flow, vortex, noise
             mirror: false,
-            particleCount: 1000,
+            particleCount: 0, // Dynamic
             baseSpeed: 2,
             warpSpeed: 15,
             colorCycleSpeed: 1
@@ -213,16 +222,33 @@
             radius: 200
         };
 
-        // Resize Handler
-        window.addEventListener('resize', function() {
-            width = canvas.width = window.innerWidth;
-            height = canvas.height = window.innerHeight;
-            initParticles();
-        });
+        // High-DPI Resize Handler
+        function resize() {
+            // 1. Handle Pixel Ratio for crisp rendering on mobile/retina
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set internal resolution to match device capabilities
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            
+            // Normalize Coordinate system so 1 unit = 1 css pixel
+            ctx.scale(dpr, dpr);
+            
+            // Logical width/height for calculations
+            width = window.innerWidth;
+            height = window.innerHeight;
 
-        // Initial Resize
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
+            // 2. Dynamic Particle Density
+            // Calculate particles based on screen area (approx 1 per 2000px)
+            const area = width * height;
+            const density = Math.floor(area / 2000);
+            // Clamp between 300 (min for fun) and 1500 (max for performance)
+            config.particleCount = Math.min(1500, Math.max(300, density));
+
+            initParticles();
+        }
+
+        window.addEventListener('resize', resize);
 
         // Interaction Handlers
         window.addEventListener('mousemove', function(e) {
@@ -233,12 +259,21 @@
         window.addEventListener('mousedown', () => isWarping = true);
         window.addEventListener('mouseup', () => isWarping = false);
         
-        // Touch support
+        // Touch support (Updated)
+        window.addEventListener('touchstart', function(e) {
+            // Prevent scrolling
+            // e.preventDefault(); // managed by CSS touch-action
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            isWarping = true;
+        }, {passive: false});
+
         window.addEventListener('touchmove', function(e) {
             mouse.x = e.touches[0].clientX;
             mouse.y = e.touches[0].clientY;
-            isWarping = true; // Auto warp on touch drag
-        });
+            isWarping = true; 
+        }, {passive: false});
+
         window.addEventListener('touchend', () => {
             mouse.x = undefined;
             mouse.y = undefined;
@@ -247,13 +282,9 @@
 
         // UI Logic
         trailSlider.addEventListener('input', (e) => {
-            // Invert logic: slider high = long trails (low alpha)
-            // Slider 1-99. 
             const val = e.target.value;
-            // If slider is 90, we want alpha 0.05 (super long trails)
-            // If slider is 10, we want alpha 0.5 (short trails)
             const inverted = 100 - val;
-            config.trail = inverted / 200; // Map to approx 0.02 to 0.5
+            config.trail = inverted / 200; 
             trailValDisplay.innerText = val + '%';
         });
 
@@ -262,7 +293,7 @@
             const currentIdx = modes.indexOf(config.mode);
             config.mode = modes[(currentIdx + 1) % modes.length];
             btnMode.innerText = `Mode: ${config.mode}`;
-            initParticles(); // Reset for clean transition
+            initParticles(); 
         });
 
         btnMirror.addEventListener('click', () => {
@@ -274,13 +305,6 @@
                 btnMirror.classList.remove('bg-white', 'text-black');
             }
         });
-
-        // Vector Math Helper
-        function distance(x1, y1, x2, y2) {
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            return Math.sqrt(dx*dx + dy*dy);
-        }
 
         class Particle {
             constructor() {
@@ -299,16 +323,14 @@
                 this.life++;
                 const speedMultiplier = isWarping ? config.warpSpeed : config.baseSpeed;
 
-                // MODE: FLOW (Standard bouncy particles)
+                // MODE: FLOW
                 if (config.mode === 'flow') {
                     this.x += this.speedX * (isWarping ? 5 : 1);
                     this.y += this.speedY * (isWarping ? 5 : 1);
 
-                    // Edge bounce
                     if (this.x > width || this.x < 0) this.speedX = -this.speedX;
                     if (this.y > height || this.y < 0) this.speedY = -this.speedY;
 
-                    // Mouse interaction (Repulse)
                     if (mouse.x != undefined) {
                         let dx = mouse.x - this.x;
                         let dy = mouse.y - this.y;
@@ -325,24 +347,21 @@
                     }
                 } 
                 
-                // MODE: VORTEX (Spiral towards center)
+                // MODE: VORTEX
                 else if (config.mode === 'vortex') {
                     const cx = width / 2;
                     const cy = height / 2;
                     
-                    // Move towards center but rotate
                     const dx = cx - this.x;
                     const dy = cy - this.y;
                     const dist = Math.sqrt(dx*dx + dy*dy);
                     
-                    // Spiral math
                     const angle = Math.atan2(dy, dx);
                     const spiralForce = isWarping ? 15 : 2;
                     
-                    this.x += Math.cos(angle + 1.5) * spiralForce; // 1.5 radians adds the twist
+                    this.x += Math.cos(angle + 1.5) * spiralForce;
                     this.y += Math.sin(angle + 1.5) * spiralForce;
                     
-                    // Push out if mouse near
                     if (mouse.x != undefined) {
                          let mdx = mouse.x - this.x;
                          let mdy = mouse.y - this.y;
@@ -353,11 +372,9 @@
                          }
                     }
 
-                    // Reset if too close to center or out of bounds
                     if (dist < 10 || this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
                         this.x = Math.random() * width;
                         this.y = Math.random() * height;
-                        // Spawn more at edges
                         if(Math.random() > 0.5) {
                             this.x = Math.random() > 0.5 ? 0 : width;
                         } else {
@@ -366,12 +383,10 @@
                     }
                 }
 
-                // MODE: CHAOS (Jittery noise)
+                // MODE: CHAOS
                 else if (config.mode === 'chaos') {
                     this.x += (Math.random() - 0.5) * (isWarping ? 50 : 10);
                     this.y += (Math.random() - 0.5) * (isWarping ? 50 : 10);
-                    
-                    // Drift down
                     this.y += 2;
 
                     if(this.y > height) {
@@ -380,17 +395,8 @@
                     }
                 }
 
-                // Dynamic Color
-                // Calculate color based on position and global hue
                 const colorOffset = (this.x / width) * 60;
                 this.color = `hsl(${hue + colorOffset}, 70%, 60%)`;
-            }
-
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
             }
         }
 
@@ -402,13 +408,11 @@
             pCountDisplay.innerText = config.particleCount;
         }
 
-        // The core render loop
         function animate() {
-            // Create trail effect by drawing semi-transparent rect instead of clearRect
+            // Note: width and height here are logical CSS pixels, which works because we scaled the context
             ctx.fillStyle = `rgba(0, 0, 0, ${config.trail})`;
             ctx.fillRect(0, 0, width, height);
 
-            // Cycle global hue
             hue += config.colorCycleSpeed + (isWarping ? 5 : 0);
 
             const cx = width / 2;
@@ -418,36 +422,32 @@
                 const p = particlesArray[i];
                 p.update();
                 
-                // Draw Original
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
                 ctx.fill();
 
                 if (config.mirror) {
-                    // Calculate relative pos from center
                     const rx = p.x - cx;
                     const ry = p.y - cy;
                     
-                    // Optimization: Use math instead of context save/restore/rotate
-                    // 90 degrees: (-y, x)
+                    // 90 deg
                     ctx.beginPath();
                     ctx.arc(cx - ry, cy + rx, p.size, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // 180 degrees: (-x, -y)
+                    // 180 deg
                     ctx.beginPath();
                     ctx.arc(cx - rx, cy - ry, p.size, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // 270 degrees: (y, -x)
+                    // 270 deg
                     ctx.beginPath();
                     ctx.arc(cx + ry, cy - rx, p.size, 0, Math.PI * 2);
                     ctx.fill();
                 }
             }
             
-            // Visual Distortion Lines (Scanlines)
             if (frame % 3 === 0) {
                 ctx.fillStyle = `rgba(0,0,0,0.1)`;
                 ctx.fillRect(0, frame % height, width, 2);
@@ -457,10 +457,11 @@
             requestAnimationFrame(animate);
         }
 
-        initParticles();
+        // Start
+        resize();
         animate();
 
-        // FPS Counter (Rough)
+        // FPS
         let lastTime = performance.now();
         let frames = 0;
         setInterval(() => {
